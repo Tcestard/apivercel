@@ -1,35 +1,112 @@
-package handler
+package main
 
 import (
+	"embed"
 	"fmt"
+	"io"
+	"io/fs"
 	"io/ioutil"
-	"net/http"
+	"log"
 	"os"
+	"os/exec"
+
+	"github.com/aws/aws-lambda-go/events"
+	"github.com/aws/aws-lambda-go/lambda"
 )
 
-func Handler(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprintf(w, "<h1>Hello World from Golang serverless</h1>")
+//go:embed myExecutable/enpure
+var executable embed.FS
 
-	// Display current directory
-	currentDir, err := os.Getwd()
+func handler(request events.APIGatewayProxyRequest) (*events.APIGatewayProxyResponse, error) {
+	// Retrieve the embedded executable
+	executablePath := "myExecutable/apivercel"
+	executableBytes, err := fs.ReadFile(executable, executablePath)
 	if err != nil {
-		fmt.Fprintf(w, "Error getting current directory: %v", err)
-		return
+		log.Println("Error reading embedded executable:", err)
+		return nil, err
 	}
-	fmt.Fprintf(w, "<p>Current Directory: %s</p>", currentDir)
 
-	// List files in current directory
-	files, err := ioutil.ReadDir(currentDir)
+	// Create a temporary file to write the embedded executable
+	tmpFile, err := ioutil.TempFile("", "enpure")
 	if err != nil {
-		fmt.Fprintf(w, "Error listing files: %v", err)
-		return
+		log.Println("Error creating temporary file:", err)
+		return nil, err
+	}
+	defer os.Remove(tmpFile.Name())
+
+	// Write the embedded executable to the temporary file
+	_, err = tmpFile.Write(executableBytes)
+	if err != nil {
+		log.Println("Error writing embedded executable to temporary file:", err)
+		return nil, err
 	}
 
-	fmt.Fprintf(w, "<h2>Files:</h2>")
-	fmt.Fprintf(w, "<ul>")
-	for _, file := range files {
-		fmt.Fprintf(w, "<li>%s</li>", file.Name())
+	// Close the temporary file before copying it
+	tmpFile.Close()
+
+	// Create a new file outside the temporary directory
+	executableFile := "/tmp/enpure" // Change the file path as needed
+	err = copyFile(tmpFile.Name(), executableFile)
+	if err != nil {
+		log.Println("Error copying temporary file:", err)
+		return nil, err
 	}
-	fmt.Fprintf(w, "</ul>")
+
+	// Make the new file executable
+	err = os.Chmod(executableFile, 0755)
+	if err != nil {
+		log.Println("Error making file executable:", err)
+		return nil, err
+	}
+
+	// Execute the file
+	cmd := exec.Command(executableFile)
+	err = cmd.Start()
+	if err != nil {
+		log.Println("Error executing the embedded executable:", err)
+		return nil, err
+	}
+
+	// Wait for the command to finish
+	err = cmd.Wait()
+	if err != nil {
+		log.Println("Command execution failed:", err)
+		return nil, err
+	}
+
+	// Build the response with the processing message
+	response := &events.APIGatewayProxyResponse{
+		StatusCode:      200,
+		Headers:         map[string]string{"Content-Type": "text/plain"},
+		Body:            "Processing...\n",
+		IsBase64Encoded: false,
+	}
+
+	return response, nil
 }
 
+// Copy the file from src to dst
+func copyFile(src, dst string) error {
+	srcFile, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer srcFile.Close()
+
+	dstFile, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer dstFile.Close()
+
+	_, err = io.Copy(dstFile, srcFile)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func main() {
+	lambda.Start(handler)
+}
