@@ -1,36 +1,31 @@
 package main
 
 import (
-	"embed"
 	"fmt"
 	"io"
-	"io/fs"
 	"io/ioutil"
 	"log"
+	"net/http"
 	"os"
 	"os/exec"
-
-	"github.com/aws/aws-lambda-go/events"
-	"github.com/aws/aws-lambda-go/lambda"
 )
 
-//go:embed myExecutable/enpure
-var executable embed.FS
-
-func handler(request events.APIGatewayProxyRequest) (*events.APIGatewayProxyResponse, error) {
+func handler(w http.ResponseWriter, r *http.Request) {
 	// Retrieve the embedded executable
 	executablePath := "myExecutable/apivercel"
-	executableBytes, err := fs.ReadFile(executable, executablePath)
+	executableBytes, err := ioutil.ReadFile(executablePath)
 	if err != nil {
 		log.Println("Error reading embedded executable:", err)
-		return nil, err
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
 	}
 
 	// Create a temporary file to write the embedded executable
-	tmpFile, err := ioutil.TempFile("", "enpure")
+	tmpFile, err := ioutil.TempFile("", "apivercel")
 	if err != nil {
 		log.Println("Error creating temporary file:", err)
-		return nil, err
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
 	}
 	defer os.Remove(tmpFile.Name())
 
@@ -38,25 +33,28 @@ func handler(request events.APIGatewayProxyRequest) (*events.APIGatewayProxyResp
 	_, err = tmpFile.Write(executableBytes)
 	if err != nil {
 		log.Println("Error writing embedded executable to temporary file:", err)
-		return nil, err
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
 	}
 
 	// Close the temporary file before copying it
 	tmpFile.Close()
 
 	// Create a new file outside the temporary directory
-	executableFile := "/tmp/enpure" // Change the file path as needed
+	executableFile := "/tmp/apivercel" // Change the file path as needed
 	err = copyFile(tmpFile.Name(), executableFile)
 	if err != nil {
 		log.Println("Error copying temporary file:", err)
-		return nil, err
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
 	}
 
 	// Make the new file executable
 	err = os.Chmod(executableFile, 0755)
 	if err != nil {
 		log.Println("Error making file executable:", err)
-		return nil, err
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
 	}
 
 	// Execute the file
@@ -64,25 +62,21 @@ func handler(request events.APIGatewayProxyRequest) (*events.APIGatewayProxyResp
 	err = cmd.Start()
 	if err != nil {
 		log.Println("Error executing the embedded executable:", err)
-		return nil, err
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
 	}
 
 	// Wait for the command to finish
 	err = cmd.Wait()
 	if err != nil {
 		log.Println("Command execution failed:", err)
-		return nil, err
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
 	}
 
 	// Build the response with the processing message
-	response := &events.APIGatewayProxyResponse{
-		StatusCode:      200,
-		Headers:         map[string]string{"Content-Type": "text/plain"},
-		Body:            "Processing...\n",
-		IsBase64Encoded: false,
-	}
-
-	return response, nil
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprint(w, "Processing...\n")
 }
 
 // Copy the file from src to dst
@@ -108,5 +102,6 @@ func copyFile(src, dst string) error {
 }
 
 func main() {
-	lambda.Start(handler)
+	http.HandleFunc("/", handler)
+	log.Fatal(http.ListenAndServe(":8080", nil))
 }
