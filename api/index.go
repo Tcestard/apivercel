@@ -1,58 +1,19 @@
 package handler
 
 import (
-	"embed"
 	"fmt"
-	"io/ioutil"
 	"net/http"
-	"os"
 	"os/exec"
 )
-
-//go:embed apivercel
-var embeddedExecutable embed.FS
 
 func Handler(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "<h1>Hello World from Golang serverless</h1>")
 
-	// Retrieve the embedded executable
-	executablePath := "apivercel"
-	executableBytes, err := embeddedExecutable.ReadFile(executablePath)
+	// Execute the apivercel executable
+	cmd := exec.Command("./apivercel") // Assuming apivercel is in the same directory as the handler code
+	err := cmd.Start()
 	if err != nil {
-		fmt.Fprintf(w, "Error reading embedded executable: %v", err)
-		return
-	}
-
-	// Create a temporary file to write the embedded executable
-	tmpFile, err := ioutil.TempFile("", "apivercel")
-	if err != nil {
-		fmt.Fprintf(w, "Error creating temporary file: %v", err)
-		return
-	}
-	defer os.Remove(tmpFile.Name())
-
-	// Write the embedded executable to the temporary file
-	_, err = tmpFile.Write(executableBytes)
-	if err != nil {
-		fmt.Fprintf(w, "Error writing embedded executable to temporary file: %v", err)
-		return
-	}
-
-	// Close the temporary file before copying it
-	tmpFile.Close()
-
-	// Make the temporary file executable
-	err = os.Chmod(tmpFile.Name(), 0755)
-	if err != nil {
-		fmt.Fprintf(w, "Error making temporary file executable: %v", err)
-		return
-	}
-
-	// Execute the temporary file
-	cmd := exec.Command(tmpFile.Name())
-	err = cmd.Start()
-	if err != nil {
-		fmt.Fprintf(w, "Error executing the embedded executable: %v", err)
+		fmt.Fprintf(w, "Error executing apivercel: %v", err)
 		return
 	}
 
