@@ -1,0 +1,12 @@
+{
+    "functions": {
+      "api/index.go": {
+        "memory": 1000,
+        "maxDuration": 60
+      },
+      "api/info.go": {
+        "memory": 1000,
+        "maxDuration": 60
+      }
+    }
+  }
