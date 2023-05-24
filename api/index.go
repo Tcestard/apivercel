@@ -1,4 +1,4 @@
-package main
+package handler
 
 import (
 	"fmt"
@@ -10,7 +10,7 @@ import (
 	"os/exec"
 )
 
-func handler(w http.ResponseWriter, r *http.Request) {
+func Handler(w http.ResponseWriter, r *http.Request) {
 	// Retrieve the embedded executable
 	executablePath := "myExecutable/apivercel"
 	executableBytes, err := ioutil.ReadFile(executablePath)
