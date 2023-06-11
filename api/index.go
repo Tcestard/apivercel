@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
-	"path/filepath"
 )
 
 func Handler(w http.ResponseWriter, r *http.Request) {
